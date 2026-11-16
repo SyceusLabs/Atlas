@@ -235,6 +235,10 @@ public sealed class WindowTests
             await app.SettleAsync();
 
             app.Find<RadioButton>("ThemeDark").IsChecked = true;
+            var settings = Assert.IsType<SettingsPageViewModel>(app.ViewModel.CurrentPage);
+            await app.WaitUntilAsync(() => settings.IsDarkTheme);
+            // Settling UI frames does not wait for the SQLite write on a busy build server.
+            await settings.PendingThemeSave;
             await app.SettleAsync();
 
             Assert.Equal("Dark", application.ActualThemeVariant.Key.ToString());
