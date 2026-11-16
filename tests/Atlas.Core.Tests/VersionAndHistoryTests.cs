@@ -194,6 +194,35 @@ public sealed class VersionAndHistoryTests
         Assert.Equal(2, await _service.CountAsync(workspace.Id, Token));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LargeVersions_CanBeRestoredWithoutRelaxingImportLimits(bool tooManyResources)
+    {
+        var workspace = await SeedAsync();
+        if (tooManyResources)
+        {
+            // Rebuild an existing workspace to avoid quadratic test setup writes.
+            var resources = Enumerable.Range(0, WorkspaceDocument.MaxResources + 1)
+                .Select(i => new Resource(Guid.NewGuid(), ResourceKind.Url, "Link", "https://example.org", i, false, _clock.GetUtcNow(), _clock.GetUtcNow()));
+            workspace = Workspace.Restore(workspace.Id, workspace.Name, workspace.Description, workspace.Notes,
+                workspace.CreatedAt, workspace.UpdatedAt, null, resources);
+            await _repository.UpdateAsync(workspace, cancellationToken: Token);
+        }
+        else
+            workspace = await _workspaces.UpdateNotesAsync(workspace.Id, new string('\u4e00', WorkspaceRules.NotesMaxLength), Token);
+
+        var version = await _service.SaveAsync(workspace.Id, "Large snapshot", Token);
+        var document = Assert.Single(_versions.Versions).Content;
+        Assert.NotNull(WorkspaceDocument.Read(document).Error);
+        await _workspaces.UpdateNotesAsync(workspace.Id, "Changed", Token);
+
+        var restored = await _service.RestoreAsync(version.Id, "Safety", Token);
+
+        Assert.Equal(workspace.Notes, restored.Notes);
+        Assert.Equal(workspace.Resources.Count, restored.Resources.Count);
+    }
+
     private async Task<Workspace> SeedAsync()
     {
         var workspace = await _workspaces.CreateAsync("Études", "Mémoire", Token);

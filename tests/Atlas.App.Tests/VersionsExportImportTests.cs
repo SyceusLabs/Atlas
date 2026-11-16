@@ -342,6 +342,73 @@ public sealed class VersionsExportImportTests : IDisposable
         Assert.Empty(_services.Navigator.Visits);
     }
 
+    [Theory]
+    [InlineData("export", false)]
+    [InlineData("version", false)]
+    [InlineData("duplicate", false)]
+    [InlineData("restore", false)]
+    [InlineData("export", true)]
+    [InlineData("version", true)]
+    [InlineData("duplicate", true)]
+    [InlineData("restore", true)]
+    public async Task Actions_StopWhenPendingNotesCannotBeSaved(string action, bool invalidNotes)
+    {
+        var workspace = Seed();
+        await _services.Pages.Versions.SaveAsync(workspace.Id, "Before", TestContext.Current.CancellationToken);
+        var page = await OpenAsync(workspace);
+        var draft = invalidNotes ? new string('x', WorkspaceRules.NotesMaxLength + 1) : "Unsaved draft";
+        page.Notes = draft;
+        if (!invalidNotes)
+            _services.Repository.WriteFailure = new IOException("Disk full");
+        _services.Dialogs.FillEditor = _ => { };
+        _services.Dialogs.ConfirmAnswer = true;
+        var path = Path.Combine(_files.Paths.DataDirectory, "export.json");
+        _services.Files.NextPath = path;
+
+        switch (action)
+        {
+            case "export": await page.ExportCommand.ExecuteAsync(null); break;
+            case "version": await page.SaveVersionCommand.ExecuteAsync(null); break;
+            case "duplicate": await page.DuplicateCommand.ExecuteAsync(null); break;
+            case "restore": await page.Versions.Single().RestoreCommand.ExecuteAsync(null); break;
+        }
+
+        Assert.Equal(draft, page.Notes);
+        Assert.True(page.HasUnsavedChanges);
+        Assert.NotNull(page.NotesError);
+        Assert.Single(_services.Versions.Versions);
+        Assert.Single(await _services.Workspaces.ListAsync(TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(path));
+        Assert.Empty(_services.Files.Requests);
+        Assert.Empty(_services.Navigator.Visits);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Export_RefusesDocumentsThatCannotBeImported(bool tooManyResources)
+    {
+        var workspace = Seed();
+        if (tooManyResources)
+        {
+            for (var i = 0; i < WorkspaceDocument.MaxResources; i++)
+                await _services.Workspaces.AddResourceAsync(workspace.Id, ResourceKind.Url, "Link", "https://example.org", TestContext.Current.CancellationToken);
+        }
+        else
+            await _services.Workspaces.UpdateNotesAsync(workspace.Id, new string('\u4e00', WorkspaceRules.NotesMaxLength), TestContext.Current.CancellationToken);
+        var page = await OpenAsync(workspace);
+        var path = Path.Combine(_files.Paths.DataDirectory, "existing.json");
+        await File.WriteAllTextAsync(path, "original", TestContext.Current.CancellationToken);
+        _services.Files.NextPath = path;
+
+        await page.ExportCommand.ExecuteAsync(null);
+
+        Assert.NotNull(page.ActionError);
+        Assert.Null(page.ActionInfo);
+        Assert.Empty(_services.Files.Requests);
+        Assert.Equal("original", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
     private Workspace Seed()
     {
         var workspace = Workspace.Create("Études d'été", "Mémoire", _services.Clock.GetUtcNow());

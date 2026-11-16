@@ -11,7 +11,7 @@
     <Company>$(Authors)</Company>
     <Copyright>Copyright (c) 2026 $(Authors)</Copyright>
     <Description>A local-first workspace manager to organize and restore your working environments.</Description>
-    <AtlasProjectUrl>https://github.com/ELPO-software/Atlas</AtlasProjectUrl>
+    <AtlasProjectUrl>https://github.com/SyceusLabs/Atlas</AtlasProjectUrl>
     <AtlasLicense>MIT</AtlasLicense>
     <NeutralLanguage>fr</NeutralLanguage>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

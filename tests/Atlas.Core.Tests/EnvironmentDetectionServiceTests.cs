@@ -24,6 +24,7 @@ public sealed class EnvironmentDetectionServiceTests
     public EnvironmentDetectionServiceTests()
     {
         _clock.SetLocalTimeZone(TimeZoneInfo.Utc);
+        _store.Workspaces = _repository;
         _workspaces = new WorkspaceService(_repository, _clock);
         _service = new EnvironmentDetectionService(_observer, _store, _workspaces, _clock);
     }
@@ -260,6 +261,21 @@ public sealed class EnvironmentDetectionServiceTests
         Assert.Equal(ProposalStatus.Saved, Assert.Single(await _store.ListAsync(Token)).Status);
     }
 
+    [Fact]
+    public async Task SavingTwiceReturnsTheSameWorkspaceAndWritesOnlyOneHistoryEntry()
+    {
+        _observer.Next = ProjectOpenInCode();
+        var suggestion = Assert.Single((await _service.ScanAsync(Token)).Suggestions);
+
+        var results = await Task.WhenAll(
+            _service.SaveAsync(suggestion.Key, "Atlas", suggestion.Proposal.Resources, Token),
+            _service.SaveAsync(suggestion.Key, "Atlas", suggestion.Proposal.Resources, Token));
+
+        Assert.Equal(results[0].Id, results[1].Id);
+        Assert.Equal(1, await _workspaces.CountAsync(Token));
+        Assert.Single(_repository.History);
+    }
+
     private sealed class FakeObserver : IWorkObserver
     {
         public WorkObservation Next { get; set; } = WorkObservation.Empty;
@@ -270,6 +286,15 @@ public sealed class EnvironmentDetectionServiceTests
 
 internal sealed class InMemoryDetectionStore : IDetectionStore
 {
+    public IWorkspaceRepository Workspaces { get; set; } = null!;
+
+    public async Task SaveWorkspaceAsync(StoredProposal proposal, Workspace workspace, CancellationToken cancellationToken = default)
+    {
+        await Workspaces.AddAsync(workspace,
+            new HistoryEntry(workspace.CreatedAt, HistoryAction.WorkspaceDetected, workspace.Id, workspace.Name), cancellationToken);
+        await SaveAsync(proposal, cancellationToken);
+    }
+
     private readonly Dictionary<string, StoredProposal> _proposals = new(StringComparer.Ordinal);
 
     public Task<IReadOnlyList<StoredProposal>> ListAsync(CancellationToken cancellationToken = default) =>

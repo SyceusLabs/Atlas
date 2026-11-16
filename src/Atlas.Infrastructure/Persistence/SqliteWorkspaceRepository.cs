@@ -103,24 +103,29 @@ public sealed class SqliteWorkspaceRepository(SqliteDatabase database) : IWorksp
             {
                 using var transaction = connection.BeginTransaction();
 
-                using (var command = connection.CreateCommand())
-                {
-                    command.Transaction = transaction;
-                    command.CommandText = """
-                        INSERT INTO workspaces (id, name, description, notes, created_at, updated_at, last_used_at)
-                        VALUES ($id, $name, $description, $notes, $created_at, $updated_at, $last_used_at)
-                        """;
-                    command.Parameters.AddWithValue("$created_at", ToText(workspace.CreatedAt));
-                    AddWorkspaceValues(command, workspace);
-                    command.ExecuteNonQuery();
-                }
-
-                InsertResources(connection, transaction, workspace);
-                WriteHistory(connection, transaction, record);
+                Insert(connection, transaction, workspace, record);
                 transaction.Commit();
                 return true;
             },
             cancellationToken);
+
+    internal static void Insert(SqliteConnection connection, SqliteTransaction transaction, Workspace workspace, HistoryEntry? record)
+    {
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO workspaces (id, name, description, notes, created_at, updated_at, last_used_at)
+                VALUES ($id, $name, $description, $notes, $created_at, $updated_at, $last_used_at)
+                """;
+            command.Parameters.AddWithValue("$created_at", ToText(workspace.CreatedAt));
+            AddWorkspaceValues(command, workspace);
+            command.ExecuteNonQuery();
+        }
+
+        InsertResources(connection, transaction, workspace);
+        WriteHistory(connection, transaction, record);
+    }
 
     public Task<bool> UpdateAsync(Workspace workspace, HistoryEntry? record = null, CancellationToken cancellationToken = default) =>
         database.RunAsync(

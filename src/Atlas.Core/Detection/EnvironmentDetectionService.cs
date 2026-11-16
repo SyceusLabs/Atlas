@@ -135,16 +135,21 @@ public sealed class EnvironmentDetectionService(
         try
         {
             var proposal = await GetAsync(key, cancellationToken);
+            if (proposal.Status == ProposalStatus.Saved && proposal.WorkspaceId is { } savedId)
+                return await workspaces.GetAsync(savedId, cancellationToken);
+
             var offered = proposal.Proposal.Resources.Select(EnvironmentDetector.Identity).ToHashSet(StringComparer.Ordinal);
             if (resources.Any(r => !offered.Contains(EnvironmentDetector.Identity(r))))
                 throw new ArgumentException("Only resources of the proposal can be saved.", nameof(resources));
 
-            var workspace = await workspaces.CreateFromDetectionAsync(
-                name, resources.Select(r => (r.Kind, r.DisplayName, r.Target)).ToList(), cancellationToken);
+            var now = timeProvider.GetUtcNow();
+            var workspace = Workspace.Create(name, string.Empty, now);
+            foreach (var resource in resources)
+                workspace.AddResource(resource.Kind, resource.DisplayName, resource.Target, now);
 
-            await store.SaveAsync(
+            await store.SaveWorkspaceAsync(
                 proposal with { Status = ProposalStatus.Saved, WorkspaceId = workspace.Id, SnoozedUntil = null },
-                cancellationToken);
+                workspace, cancellationToken);
             return workspace;
         }
         finally

@@ -28,6 +28,7 @@ internal static class RestoreText
             ? Strings.ReasonSystemRefused
             : UiText.Format(Strings.ReasonSystemRefusedWithMessage, step.SystemMessage),
         RestoreReason.TimedOut => Strings.ReasonTimedOut,
+        RestoreReason.OpeningInProgress => Strings.ReasonOpeningInProgress,
         RestoreReason.NeedsApproval => Strings.ReasonNeedsApproval,
         RestoreReason.BlockedFileType => Strings.ReasonBlockedFileType,
         RestoreReason.InvalidTarget => Strings.ReasonInvalidTarget,

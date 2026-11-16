@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using Atlas.Core.Detection;
+using Atlas.Core.History;
 using Atlas.Core.Resources;
+using Atlas.Core.Workspaces;
 using Microsoft.Data.Sqlite;
 
 namespace Atlas.Infrastructure.Persistence;
@@ -72,36 +74,59 @@ public sealed class SqliteDetectionStore(SqliteDatabase database) : IDetectionSt
         return database.RunAsync(
             connection =>
             {
-                using var command = connection.CreateCommand();
-                command.CommandText = """
-                    INSERT INTO detected_environments (key, kind, title, confidence, resources, status, first_seen, last_seen,
-                                                       seen_days, last_seen_day, snoozed_until, notified_at, workspace_id)
-                    VALUES ($key, $kind, $title, $confidence, $resources, $status, $first_seen, $last_seen,
-                            $seen_days, $last_seen_day, $snoozed_until, $notified_at, $workspace_id)
-                    ON CONFLICT (key) DO UPDATE SET
-                        kind = excluded.kind, title = excluded.title, confidence = excluded.confidence,
-                        resources = excluded.resources, status = excluded.status, first_seen = excluded.first_seen,
-                        last_seen = excluded.last_seen, seen_days = excluded.seen_days, last_seen_day = excluded.last_seen_day,
-                        snoozed_until = excluded.snoozed_until, notified_at = excluded.notified_at,
-                        workspace_id = excluded.workspace_id
-                    """;
-                var p = proposal.Proposal;
-                command.Parameters.AddWithValue("$key", p.Key);
-                command.Parameters.AddWithValue("$kind", Kinds[p.Kind]);
-                command.Parameters.AddWithValue("$title", p.Title);
-                command.Parameters.AddWithValue("$confidence", Confidences[p.Confidence]);
-                command.Parameters.AddWithValue("$resources", WriteResources(p.Resources));
-                command.Parameters.AddWithValue("$status", Statuses[proposal.Status]);
-                command.Parameters.AddWithValue("$first_seen", HistoryTable.Text(proposal.FirstSeen));
-                command.Parameters.AddWithValue("$last_seen", HistoryTable.Text(proposal.LastSeen));
-                command.Parameters.AddWithValue("$seen_days", proposal.SeenDays);
-                command.Parameters.AddWithValue("$last_seen_day", proposal.LastSeenDay.ToString("O", CultureInfo.InvariantCulture));
-                command.Parameters.AddWithValue("$snoozed_until", Nullable(proposal.SnoozedUntil));
-                command.Parameters.AddWithValue("$notified_at", Nullable(proposal.NotifiedAt));
-                command.Parameters.AddWithValue("$workspace_id", (object?)proposal.WorkspaceId?.ToString("D") ?? DBNull.Value);
-                return command.ExecuteNonQuery();
+                WriteProposal(connection, null, proposal);
+                return true;
             },
             cancellationToken);
+    }
+
+    public Task SaveWorkspaceAsync(StoredProposal proposal, Workspace workspace, CancellationToken cancellationToken = default) =>
+        database.RunAsync(
+            connection =>
+            {
+                if (proposal.Status != ProposalStatus.Saved || proposal.WorkspaceId != workspace.Id)
+                    throw new ArgumentException("The saved proposal must refer to the new workspace.", nameof(proposal));
+
+                using var transaction = connection.BeginTransaction();
+                SqliteWorkspaceRepository.Insert(connection, transaction, workspace,
+                    new HistoryEntry(workspace.CreatedAt, HistoryAction.WorkspaceDetected, workspace.Id, workspace.Name));
+                WriteProposal(connection, transaction, proposal);
+                transaction.Commit();
+                return true;
+            },
+            cancellationToken);
+
+    private static void WriteProposal(SqliteConnection connection, SqliteTransaction? transaction, StoredProposal proposal)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO detected_environments (key, kind, title, confidence, resources, status, first_seen, last_seen,
+                                               seen_days, last_seen_day, snoozed_until, notified_at, workspace_id)
+            VALUES ($key, $kind, $title, $confidence, $resources, $status, $first_seen, $last_seen,
+                    $seen_days, $last_seen_day, $snoozed_until, $notified_at, $workspace_id)
+            ON CONFLICT (key) DO UPDATE SET
+                kind = excluded.kind, title = excluded.title, confidence = excluded.confidence,
+                resources = excluded.resources, status = excluded.status, first_seen = excluded.first_seen,
+                last_seen = excluded.last_seen, seen_days = excluded.seen_days, last_seen_day = excluded.last_seen_day,
+                snoozed_until = excluded.snoozed_until, notified_at = excluded.notified_at,
+                workspace_id = excluded.workspace_id
+            """;
+        var p = proposal.Proposal;
+        command.Parameters.AddWithValue("$key", p.Key);
+        command.Parameters.AddWithValue("$kind", Kinds[p.Kind]);
+        command.Parameters.AddWithValue("$title", p.Title);
+        command.Parameters.AddWithValue("$confidence", Confidences[p.Confidence]);
+        command.Parameters.AddWithValue("$resources", WriteResources(p.Resources));
+        command.Parameters.AddWithValue("$status", Statuses[proposal.Status]);
+        command.Parameters.AddWithValue("$first_seen", HistoryTable.Text(proposal.FirstSeen));
+        command.Parameters.AddWithValue("$last_seen", HistoryTable.Text(proposal.LastSeen));
+        command.Parameters.AddWithValue("$seen_days", proposal.SeenDays);
+        command.Parameters.AddWithValue("$last_seen_day", proposal.LastSeenDay.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$snoozed_until", Nullable(proposal.SnoozedUntil));
+        command.Parameters.AddWithValue("$notified_at", Nullable(proposal.NotifiedAt));
+        command.Parameters.AddWithValue("$workspace_id", (object?)proposal.WorkspaceId?.ToString("D") ?? DBNull.Value);
+        command.ExecuteNonQuery();
     }
 
     public Task DeleteAsync(IReadOnlyCollection<string> keys, CancellationToken cancellationToken = default)

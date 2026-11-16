@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please do not describe a vulnerability in a public issue. Report it privately instead: on the [Security tab](https://github.com/ELPO-software/Atlas/security) of the repository, choose **Report a vulnerability**. You will get an answer, and credit if you wish, once the fix is published.
+Please do not describe a vulnerability in a public issue. Report it privately instead: on the [Security tab](https://github.com/SyceusLabs/Atlas/security) of the repository, choose **Report a vulnerability**. You will get an answer, and credit if you wish, once the fix is published.
 
 Atlas is a beta. Only the latest release receives fixes.
 

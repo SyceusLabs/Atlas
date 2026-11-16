@@ -150,6 +150,42 @@ public sealed class RestorationTests
         Assert.Equal(RestoreStatus.Restored, report.Steps[1].Status);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Run_DoesNotRepeatAnOpeningThatTimedOutAndAllowsRetryAfterItFinishes(bool lateFailure)
+    {
+        var late = new TaskCompletionSource<OpenResult>();
+        _opener.Pending[@"\\server\slow\notes.txt"] = late.Task;
+        var plan = Plan((ResourceKind.File, @"\\server\slow\notes.txt"));
+        var running = Run(plan);
+        await WaitUntilAsync(() => _opener.Opened.Count == 1);
+        _clock.Advance(RestorationService.StepTimeout);
+        Assert.Equal(RestoreReason.TimedOut, Assert.Single((await running).Steps).Reason);
+
+        var retry = await Run(plan);
+        Assert.Equal(RestoreReason.OpeningInProgress, Assert.Single(retry.Steps).Reason);
+        Assert.Single(_opener.Opened);
+
+        _opener.Pending.Remove(@"\\server\slow\notes.txt");
+        if (lateFailure)
+            late.SetException(new IOException("Late failure"));
+        else
+            late.SetResult(OpenResult.Opened());
+        // The completion observer releases the target before another real opening is allowed.
+        RestoreReport? after = null;
+        for (var attempt = 0; attempt < 500; attempt++)
+        {
+            after = await Run(plan);
+            if (after.Steps[0].Reason != RestoreReason.OpeningInProgress)
+                break;
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+        Assert.NotNull(after);
+        Assert.Equal(RestoreStatus.Restored, Assert.Single(after.Steps).Status);
+        Assert.Equal(2, _opener.Opened.Count);
+    }
+
     [Fact]
     public async Task Run_StopsBeforeTheNextResourceWhenAsked()
     {
@@ -278,6 +314,8 @@ public sealed class RestorationTests
 
         public Dictionary<string, Exception> Failures { get; } = [];
 
+        public Dictionary<string, Task<OpenResult>> Pending { get; } = [];
+
         public HashSet<string> Hangs { get; } = [];
 
         public Action<string>? OnOpen { get; set; }
@@ -297,6 +335,9 @@ public sealed class RestorationTests
                 _opened.Add(target);
 
             OnOpen?.Invoke(target);
+
+            if (Pending.TryGetValue(target, out var pending))
+                return pending;
 
             if (Hangs.Contains(target))
                 return new TaskCompletionSource<OpenResult>().Task;

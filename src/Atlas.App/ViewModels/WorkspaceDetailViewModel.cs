@@ -332,7 +332,7 @@ public sealed partial class WorkspaceDetailViewModel(
             {
                 // A version saved right after typing must contain what was just typed.
                 CancelNotesDelay();
-                await SaveNotesAsync();
+                await RequireSavedNotesAsync();
                 await services.Versions.SaveAsync(workspaceId, name);
                 return await services.Workspaces.GetAsync(workspaceId);
             }));
@@ -349,8 +349,19 @@ public sealed partial class WorkspaceDetailViewModel(
         try
         {
             CancelNotesDelay();
-            await SaveNotesAsync();
+            if (!await SaveNotesAsync())
+                return;
             var workspace = await services.Workspaces.GetAsync(workspaceId);
+
+            var now = services.Time.GetUtcNow();
+            var document = WorkspaceDocument.Write(workspace, now);
+            if (WorkspaceDocument.Read(document).Error is { } documentError)
+            {
+                ActionError = documentError.Problem == DocumentProblem.TooManyResources
+                    ? Strings.ExportTooManyResources
+                    : Strings.ExportTooLarge;
+                return;
+            }
 
             if (ExportPrivacy.RevealedUserName(
                     workspace.Resources.Select(r => r.Target),
@@ -368,8 +379,7 @@ public sealed partial class WorkspaceDetailViewModel(
             if (await services.Files.PickExportFileAsync(ExportPrivacy.FileNameFor(workspace.Name)) is not { } path)
                 return;
 
-            var now = services.Time.GetUtcNow();
-            await WorkspaceFiles.WriteAsync(path, WorkspaceDocument.Write(workspace, now));
+            await WorkspaceFiles.WriteAsync(path, document);
             ActionInfo = UiText.Format(Strings.ExportDone, path);
             await RecordAsync(new HistoryEntry(now, HistoryAction.WorkspaceExported, workspace.Id, workspace.Name, Path.GetFileName(path)));
         }
@@ -396,7 +406,8 @@ public sealed partial class WorkspaceDetailViewModel(
         {
             // The current state, saved first as a version, must include what was just typed.
             CancelNotesDelay();
-            await SaveNotesAsync();
+            if (!await SaveNotesAsync())
+                return;
             var workspace = await services.Versions.RestoreAsync(version.Id, UiText.Format(Strings.SafetyVersionName, version.Name));
 
             ShowDetails(workspace);
@@ -662,8 +673,14 @@ public sealed partial class WorkspaceDetailViewModel(
     private async Task<Workspace> DuplicateWithLatestNotesAsync(string? name)
     {
         CancelNotesDelay();
-        await SaveNotesAsync();
+        await RequireSavedNotesAsync();
         return await services.Workspaces.DuplicateAsync(workspaceId, name);
+    }
+
+    private async Task RequireSavedNotesAsync()
+    {
+        if (!await SaveNotesAsync())
+            throw new IOException(NotesError);
     }
 
     private void ShowChange(Workspace workspace)

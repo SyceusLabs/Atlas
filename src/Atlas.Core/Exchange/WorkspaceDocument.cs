@@ -94,9 +94,14 @@ public static class WorkspaceDocument
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
-    public static DocumentReadResult Read(string text)
+    public static DocumentReadResult Read(string text) => Read(text, isStoredVersion: false);
+
+    /// <summary>Reads Atlas's own snapshots without the size and resource limits imposed on external imports.</summary>
+    public static DocumentReadResult ReadVersion(string text) => Read(text, isStoredVersion: true);
+
+    private static DocumentReadResult Read(string text, bool isStoredVersion)
     {
-        if (Encoding.UTF8.GetByteCount(text) > MaxBytes)
+        if (!isStoredVersion && Encoding.UTF8.GetByteCount(text) > MaxBytes)
             return DocumentReadResult.Failed(DocumentProblem.TooLarge);
 
         JsonDocument document;
@@ -113,7 +118,7 @@ public static class WorkspaceDocument
         {
             try
             {
-                return new DocumentReadResult(ReadRoot(document.RootElement), null);
+                return new DocumentReadResult(ReadRoot(document.RootElement, isStoredVersion), null);
             }
             catch (DocumentException ex)
             {
@@ -122,7 +127,7 @@ public static class WorkspaceDocument
         }
     }
 
-    private static DocumentContent ReadRoot(JsonElement root)
+    private static DocumentContent ReadRoot(JsonElement root, bool isStoredVersion)
     {
         var properties = PropertiesOf(root, string.Empty, ["format", "version", "savedAt", "workspace"]);
 
@@ -146,7 +151,7 @@ public static class WorkspaceDocument
         {
             if (list.ValueKind != JsonValueKind.Array)
                 throw new DocumentException(DocumentProblem.WrongType, "workspace.resources");
-            if (list.GetArrayLength() > MaxResources)
+            if (!isStoredVersion && list.GetArrayLength() > MaxResources)
                 throw new DocumentException(DocumentProblem.TooManyResources);
 
             var index = 0;

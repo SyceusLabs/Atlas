@@ -52,3 +52,9 @@ Atlas reads the file and nothing else: during an import it does not look up any 
 ## Privacy
 
 An exported file contains the paths of the resources, which often include the Windows user name, as in `C:\Users\name\Documents`. Atlas warns before exporting when it finds the user name in a path. Notes are exported as they are.
+
+## Internal versions and export limits
+
+Saved versions use the same JSON structure, but are read through a separate internal reader without the external 2 MiB and 1,000-resource limits. This keeps existing large workspaces recoverable. JSON structure, depth and format-version validation still apply. Files selected for import always use the bounded external reader.
+
+Before exporting, Atlas checks that its document can be read by the external reader. If it exceeds either limit, Atlas explains why and leaves the destination untouched; the workspace and its internal versions remain available.
