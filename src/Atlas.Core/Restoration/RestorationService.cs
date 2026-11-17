@@ -1,3 +1,5 @@
+using Atlas.Core.Resources;
+
 namespace Atlas.Core.Restoration;
 
 /// <summary>
@@ -8,6 +10,9 @@ public sealed class RestorationService(IResourceOpener opener, TimeProvider time
 {
     /// <summary>How long the system has to answer for one resource, such as a network folder that does not respond.</summary>
     public static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(15);
+
+    private readonly object _openingGate = new();
+    private readonly Dictionary<(ResourceKind Kind, string Target), Task<OpenResult>> _openings = [];
 
     /// <param name="stop">
     /// Stops before the next resource. The one being opened is finished, so that its result is known and true.
@@ -51,10 +56,22 @@ public sealed class RestorationService(IResourceOpener opener, TimeProvider time
 
     private async Task<OpenResult> OpenAsync(PlannedStep step)
     {
+        var key = (step.Resource.Kind, step.Resource.Kind == ResourceKind.Url
+            ? step.Resource.Target
+            : step.Resource.Target.ToUpperInvariant());
+        Task<OpenResult> opening;
+        lock (_openingGate)
+        {
+            if (_openings.ContainsKey(key))
+                return OpenResult.Skipped(RestoreReason.OpeningInProgress);
+
+            // Keep the request registered even after a timeout: Windows may still complete it.
+            opening = Task.Run(() => opener.OpenAsync(step.Resource.Kind, step.Resource.Target));
+            _openings.Add(key, opening);
+        }
+        _ = ObserveOpeningAsync(key, opening);
         try
         {
-            // On the thread pool, so that a system call that blocks can be abandoned after the timeout.
-            var opening = Task.Run(() => opener.OpenAsync(step.Resource.Kind, step.Resource.Target));
             return await opening.WaitAsync(StepTimeout, timeProvider);
         }
         catch (TimeoutException)
@@ -64,6 +81,25 @@ public sealed class RestorationService(IResourceOpener opener, TimeProvider time
         catch (Exception ex)
         {
             return OpenResult.Failed(RestoreReason.SystemRefused, ex.Message);
+        }
+    }
+
+    private async Task ObserveOpeningAsync((ResourceKind Kind, string Target) key, Task<OpenResult> opening)
+    {
+        try
+        {
+            var result = await opening;
+            if (result.Confirmation is { } confirmation)
+                await confirmation;
+        }
+        catch (Exception)
+        {
+            // Observe late failures, including those arriving after the report's timeout.
+        }
+        finally
+        {
+            lock (_openingGate)
+                _openings.Remove(key);
         }
     }
 

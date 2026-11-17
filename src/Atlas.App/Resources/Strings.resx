@@ -533,6 +533,15 @@
   <data name="ReasonSystemRefusedWithMessage" xml:space="preserve">
     <value>Windows a refusé de l'ouvrir&#160;: {0}</value>
   </data>
+  <data name="ExportTooLarge" xml:space="preserve">
+    <value>Cet espace dépasse la limite d'export de 2 Mio. Réduisez les notes ou le nombre de ressources avant de réessayer. Vos données et vos versions restent enregistrées dans Atlas.</value>
+  </data>
+  <data name="ExportTooManyResources" xml:space="preserve">
+    <value>Cet espace dépasse la limite d'export de 1 000 ressources. Réduisez le nombre de ressources avant de réessayer. Vos données et vos versions restent enregistrées dans Atlas.</value>
+  </data>
+  <data name="ReasonOpeningInProgress" xml:space="preserve">
+    <value>Une demande d'ouverture précédente est encore en cours. Atlas ne la relance pas.</value>
+  </data>
   <data name="ReasonTimedOut" xml:space="preserve">
     <value>Windows n'a pas répondu à temps. La ressource s'ouvrira peut-être quand même.</value>
   </data>

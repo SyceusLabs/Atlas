@@ -321,6 +321,21 @@ public sealed class SuggestionTests : IDisposable
     }
 
     [Fact]
+    public async Task NotificationReadFailureOpensSuggestionsInsteadOfEscapingTheHandler()
+    {
+        await ObserveTwiceAsync(ProjectOpenInCode());
+        var notification = Assert.Single(_services.Notifications.Shown);
+        _services.Repository.ReadFailure = new IOException("Disk unavailable");
+        var requested = false;
+        Center.SuggestionsRequested += (_, _) => requested = true;
+
+        await Center.HandleActivationAsync(new NotificationActivation(notification.Tag, "save"));
+
+        Assert.True(requested);
+        Assert.Equal(0, _services.Repository.WriteCount);
+    }
+
+    [Fact]
     public async Task TheNavigationCountsTheSuggestionsWaiting()
     {
         var main = new MainWindowViewModel(_services.Pages);

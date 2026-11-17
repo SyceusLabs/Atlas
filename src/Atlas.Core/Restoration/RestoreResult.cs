@@ -34,6 +34,9 @@ public enum RestoreReason
     /// <summary>The system did not answer in time. The resource may still open later.</summary>
     TimedOut,
 
+    /// <summary>A previous request to open this target is still running, possibly after a timeout.</summary>
+    OpeningInProgress,
+
     NeedsApproval,
     BlockedFileType,
     InvalidTarget,

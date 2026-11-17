@@ -415,6 +415,7 @@ internal sealed class TestServices
         Versions = new FakeVersionRepository(Repository);
         History = new FakeHistoryRepository(Repository);
         Settings = new SettingsService(SettingsStore);
+        DetectionStore.Workspaces = Repository;
         Detection = new EnvironmentDetectionService(Observer, DetectionStore, Workspaces, Clock);
         Suggestions = new SuggestionCenter(Detection, Settings, Notifications, Host, Clock, NullLoggerFactory.Instance);
         Pages = new PageServices(
@@ -500,6 +501,15 @@ internal sealed class FakeWorkObserver : IWorkObserver
 
 internal sealed class InMemoryDetectionStore : IDetectionStore
 {
+    public IWorkspaceRepository Workspaces { get; set; } = null!;
+
+    public async Task SaveWorkspaceAsync(StoredProposal proposal, Workspace workspace, CancellationToken cancellationToken = default)
+    {
+        await Workspaces.AddAsync(workspace,
+            new HistoryEntry(workspace.CreatedAt, HistoryAction.WorkspaceDetected, workspace.Id, workspace.Name), cancellationToken);
+        await SaveAsync(proposal, cancellationToken);
+    }
+
     private readonly Dictionary<string, StoredProposal> _proposals = new(StringComparer.Ordinal);
 
     public Task<IReadOnlyList<StoredProposal>> ListAsync(CancellationToken cancellationToken = default) =>

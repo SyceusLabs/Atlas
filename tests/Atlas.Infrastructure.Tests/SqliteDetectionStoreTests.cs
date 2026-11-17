@@ -45,6 +45,40 @@ public sealed class SqliteDetectionStoreTests : IDisposable
             Seen.AddMinutes(2),
             Guid.Parse("8b9c1a52-3f0e-4c1d-9b55-2f0f3d6e7a10"));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SavingAWorkspaceCommitsAllChangesOrNone(bool failDecision)
+    {
+        var database = new SqliteDatabase(_folder.DatabasePath);
+        var workspaces = new SqliteWorkspaceRepository(database);
+        var workspace = Atlas.Core.Workspaces.Workspace.Create("Atlas", null, Seen);
+        var proposal = Proposal() with { Status = ProposalStatus.Pending, WorkspaceId = null };
+        await _store.SaveAsync(proposal, Token);
+        if (failDecision)
+        {
+            using var connection = new SqliteConnection($"Data Source={_folder.DatabasePath};Pooling=False");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TRIGGER refuse_saved BEFORE UPDATE ON detected_environments BEGIN SELECT RAISE(ABORT, 'simulated failure'); END";
+            command.ExecuteNonQuery();
+        }
+        var saved = proposal with { Status = ProposalStatus.Saved, WorkspaceId = workspace.Id, SnoozedUntil = null };
+
+        if (failDecision)
+            await Assert.ThrowsAsync<SqliteException>(() => _store.SaveWorkspaceAsync(saved, workspace, Token));
+        else
+            await _store.SaveWorkspaceAsync(saved, workspace, Token);
+
+        Assert.Equal(failDecision ? 0 : 1, await workspaces.CountAsync(Token));
+        Assert.Equal(failDecision ? ProposalStatus.Pending : ProposalStatus.Saved, Assert.Single(await _store.ListAsync(Token)).Status);
+        using var check = new SqliteConnection($"Data Source={_folder.DatabasePath};Pooling=False");
+        check.Open();
+        using var history = check.CreateCommand();
+        history.CommandText = "SELECT COUNT(*) FROM history";
+        Assert.Equal(failDecision ? 0L : 1L, (long)history.ExecuteScalar()!);
+    }
+
     [Fact]
     public async Task AProposalIsReadBackAsItWasSaved()
     {

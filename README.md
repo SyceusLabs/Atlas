@@ -26,7 +26,7 @@ Atlas is a beta: version 0.2.0-beta.1. Its interface is in French. It runs on Wi
 
 ## Install
 
-Each [release](https://github.com/ELPO-software/Atlas/releases) offers one installer per processor:
+Each [release](https://github.com/SyceusLabs/Atlas/releases) offers one installer per processor:
 
 | Your computer | Download |
 |---|---|

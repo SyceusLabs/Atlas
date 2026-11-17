@@ -189,12 +189,12 @@ public sealed partial class SuggestionCenter : ObservableObject, IDisposable
     /// <summary>What the user chose in a Windows notification. Called on the interface thread.</summary>
     internal async Task HandleActivationAsync(NotificationActivation activation)
     {
-        _notifications.Remove(activation.Tag);
-        _keysByTag.TryGetValue(activation.Tag, out var key);
-        var proposal = key is null ? null : (await _detection.ListSuggestionsAsync()).FirstOrDefault(s => s.Key == key);
-
+        StoredProposal? proposal = null;
         try
         {
+            _notifications.Remove(activation.Tag);
+            _keysByTag.TryGetValue(activation.Tag, out var key);
+            proposal = key is null ? null : (await _detection.ListSuggestionsAsync()).FirstOrDefault(s => s.Key == key);
             switch (activation.Argument)
             {
                 // Only a certain environment can be saved from the notification; a probable one is reviewed first.

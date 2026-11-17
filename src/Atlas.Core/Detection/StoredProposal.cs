@@ -1,3 +1,5 @@
+using Atlas.Core.Workspaces;
+
 namespace Atlas.Core.Detection;
 
 public enum ProposalStatus
@@ -41,6 +43,9 @@ public interface IDetectionStore
 
     /// <summary>Adds the proposal, or replaces the one with the same key.</summary>
     Task SaveAsync(StoredProposal proposal, CancellationToken cancellationToken = default);
+
+    /// <summary>Creates the workspace, its history and the saved decision in one transaction.</summary>
+    Task SaveWorkspaceAsync(StoredProposal proposal, Workspace workspace, CancellationToken cancellationToken = default);
 
     Task DeleteAsync(IReadOnlyCollection<string> keys, CancellationToken cancellationToken = default);
 }

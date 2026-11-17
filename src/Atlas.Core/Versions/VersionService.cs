@@ -32,7 +32,7 @@ public sealed class VersionService(WorkspaceService workspaces, IVersionReposito
     public async Task<Workspace> RestoreAsync(Guid versionId, string safetyVersionName, CancellationToken cancellationToken = default)
     {
         var version = await versions.GetAsync(versionId, cancellationToken) ?? throw new VersionNotFoundException(versionId);
-        var read = WorkspaceDocument.Read(version.Content);
+        var read = WorkspaceDocument.ReadVersion(version.Content);
         if (read.Content is null)
             throw new UnreadableVersionException(versionId);
 
